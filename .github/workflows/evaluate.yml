@@ -1,0 +1,81 @@
+name: Hardened binary evaluation
+on:
+  push:
+    paths: ["project-bundle.zip", "**/*.cpp", "harness/**", "tests/**", "requirements.txt", ".github/workflows/evaluate.yml"]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y g++ clang lld binutils python3-pip
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Materialize initial source bundle (first run only)
+        if: hashFiles('project-bundle.zip') != ''
+        run: unzip -q project-bundle.zip -d "$RUNNER_TEMP/project"
+      - name: Select project source
+        shell: bash
+        run: |
+          if [[ -d "$RUNNER_TEMP/project/hardened-binary-eval-lab" ]]; then
+            echo "PROJECT_ROOT=$RUNNER_TEMP/project/hardened-binary-eval-lab" >> "$GITHUB_ENV"
+          else
+            echo "PROJECT_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+          fi
+      - name: Install Python reporting dependencies
+        run: python -m pip install -r "$PROJECT_ROOT/requirements.txt"
+      - name: Compile complete compiler and hardening matrix
+        run: python "$PROJECT_ROOT/harness/build_matrix.py"
+      - name: Verify bounded local exploit outcomes
+        run: python "$PROJECT_ROOT/harness/run_security.py"
+      - name: Benchmark repeated medians
+        run: python "$PROJECT_ROOT/harness/run_benchmarks.py"
+      - name: Capture readelf and objdump analysis
+        run: python "$PROJECT_ROOT/harness/binary_analysis.py"
+      - name: Generate Markdown, CSV and chart
+        run: python "$PROJECT_ROOT/harness/generate_reports.py"
+      - name: Run pytest (JUnit coverage count)
+        run: pytest -q "$PROJECT_ROOT/tests" --junitxml="$PROJECT_ROOT/build/pytest-results.xml"
+      - name: Add real Actions run results to README and commit reports
+        if: success() && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          python "$PROJECT_ROOT/harness/update_readme.py"
+          if [[ "$PROJECT_ROOT" != "$GITHUB_WORKSPACE" ]]; then
+            cp -a "$PROJECT_ROOT/programs" "$PROJECT_ROOT/harness" "$PROJECT_ROOT/tests" "$PROJECT_ROOT/reports" "$GITHUB_WORKSPACE/"
+            cp -a "$PROJECT_ROOT/requirements.txt" "$PROJECT_ROOT/README.md" "$PROJECT_ROOT/.gitignore" "$GITHUB_WORKSPACE/"
+            rm -f "$GITHUB_WORKSPACE/project-bundle.zip"
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if [[ -n "$(git status --porcelain)" ]]; then
+            git commit -m "docs: publish latest evaluation results [skip ci]"
+            git push
+          fi
+      - name: Upload evaluation report and raw evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hardened-binary-evaluation-${{ github.run_number }}
+          path: |
+            ${{ runner.temp }}/project/hardened-binary-eval-lab/reports/
+            ${{ runner.temp }}/project/hardened-binary-eval-lab/build/manifest.json
+            ${{ runner.temp }}/project/hardened-binary-eval-lab/build/exploits.json
+            ${{ runner.temp }}/project/hardened-binary-eval-lab/build/benchmarks.json
+            ${{ runner.temp }}/project/hardened-binary-eval-lab/build/pytest-results.xml
+            ${{ github.workspace }}/reports/
+            ${{ github.workspace }}/build/manifest.json
+            ${{ github.workspace }}/build/exploits.json
+            ${{ github.workspace }}/build/benchmarks.json
+            ${{ github.workspace }}/build/pytest-results.xml
+          if-no-files-found: warn
