@@ -1,7 +1,7 @@
 name: Hardened binary evaluation
 on:
   push:
-    paths: ["project-bundle.zip", "**/*.cpp", "harness/**", "tests/**", "requirements.txt", ".github/workflows/evaluate.yml"]
+    paths: ["hardened-binary-eval-lab-project-bundle.zip", "**/*.cpp", "harness/**", "tests/**", "requirements.txt", ".github/workflows/evaluate.yml"]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -19,8 +19,8 @@ jobs:
         with:
           python-version: "3.12"
       - name: Materialize initial source bundle (first run only)
-        if: hashFiles('project-bundle.zip') != ''
-        run: unzip -q project-bundle.zip -d "$RUNNER_TEMP/project"
+        if: hashFiles('hardened-binary-eval-lab-project-bundle.zip') != ''
+        run: unzip -q hardened-binary-eval-lab-project-bundle.zip -d "$RUNNER_TEMP/project"
       - name: Select project source
         shell: bash
         run: |
@@ -53,7 +53,7 @@ jobs:
           if [[ "$PROJECT_ROOT" != "$GITHUB_WORKSPACE" ]]; then
             cp -a "$PROJECT_ROOT/programs" "$PROJECT_ROOT/harness" "$PROJECT_ROOT/tests" "$PROJECT_ROOT/reports" "$GITHUB_WORKSPACE/"
             cp -a "$PROJECT_ROOT/requirements.txt" "$PROJECT_ROOT/README.md" "$PROJECT_ROOT/.gitignore" "$GITHUB_WORKSPACE/"
-            rm -f "$GITHUB_WORKSPACE/project-bundle.zip"
+            rm -f "$GITHUB_WORKSPACE/hardened-binary-eval-lab-project-bundle.zip"
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
